@@ -173,22 +173,23 @@ def main(args):
     output_dir = Path(args.output_dir)
     if args.resume:
         if args.resume.startswith('https'):
+            # Pre-trained COCO (num_classes berbeda -> hapus class_embed)
             checkpoint = torch.hub.load_state_dict_from_url(
                 args.resume, map_location='cpu', check_hash=True)
+            del checkpoint["model"]["class_embed.weight"]
+            del checkpoint["model"]["class_embed.bias"]
+            model_without_ddp.load_state_dict(checkpoint['model'], strict=False)
         else:
+            # Resume dari checkpoint hasil training sendiri (langsung load full)
             checkpoint = torch.load(args.resume, map_location='cpu')
-        model_without_ddp.load_state_dict(checkpoint['model'])
+            model_without_ddp.load_state_dict(checkpoint['model'], strict=True)
+    
+        # Kalau training lanjut, load optimizer & scheduler juga
         if not args.eval and 'optimizer' in checkpoint and 'lr_scheduler' in checkpoint and 'epoch' in checkpoint:
             optimizer.load_state_dict(checkpoint['optimizer'])
             lr_scheduler.load_state_dict(checkpoint['lr_scheduler'])
             args.start_epoch = checkpoint['epoch'] + 1
 
-    if args.eval:
-        test_stats, coco_evaluator = evaluate(model, criterion, postprocessors,
-                                              data_loader_val, base_ds, device, args.output_dir)
-        if args.output_dir:
-            utils.save_on_master(coco_evaluator.coco_eval["bbox"].eval, output_dir / "eval.pth")
-        return
 
     print("Start training")
     start_time = time.time()
